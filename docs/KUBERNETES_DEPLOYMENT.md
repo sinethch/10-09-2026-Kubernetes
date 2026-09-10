@@ -1,6 +1,7 @@
 # Kubernetes deployment
 
-This repository deploys the MERN application to an existing Kubernetes cluster.
+This repository deploys the MERN application to an existing Kubernetes cluster
+in the `sineth-test-ecommerce` namespace.
 The frontend is exposed through a `NodePort` on port `30080`; MongoDB and the
 backend remain internal cluster services.
 
@@ -18,7 +19,7 @@ is reachable. Add these Jenkins credentials without committing them to GitHub:
 
 The Jenkins job also needs the non-secret parameter/environment variable
 `KUBE_API_SERVER`, for example `https://10.0.0.10:6443`. The token must be
-authorized to create/update resources in the `ecommerce` namespace, including
+authorized to create/update resources in the `sineth-test-ecommerce` namespace, including
 Deployments, Services, a PersistentVolumeClaim, and Secrets.
 
 ## Manual deployment test
@@ -29,11 +30,11 @@ Authenticate locally with the same cluster credentials, then run:
 kubectl --server="$KUBE_API_SERVER" --token="$KUBE_TOKEN" \
   --certificate-authority="$KUBE_CA_FILE" get nodes
 
-kubectl create namespace ecommerce --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n ecommerce create secret generic ecommerce-secrets \
+kubectl create namespace sineth-test-ecommerce --dry-run=client -o yaml | kubectl apply -f -
+kubectl -n sineth-test-ecommerce create secret generic ecommerce-secrets \
   --from-literal=MONGO_URI='mongodb://mongodb:27017/ecommerce' \
   --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n ecommerce create secret docker-registry ghcr-pull-secret \
+kubectl -n sineth-test-ecommerce create secret docker-registry ghcr-pull-secret \
   --docker-server=ghcr.io --docker-username=YOUR_GITHUB_USER \
   --docker-password=YOUR_GITHUB_TOKEN \
   --dry-run=client -o yaml | kubectl apply -f -
@@ -41,9 +42,9 @@ kubectl -n ecommerce create secret docker-registry ghcr-pull-secret \
 export BACKEND_IMAGE=ghcr.io/sinethch/10-09-2026-kubernetes/backend:main-latest
 export FRONTEND_IMAGE=ghcr.io/sinethch/10-09-2026-kubernetes/frontend:main-latest
 envsubst < k8s/app.yaml | kubectl apply -f -
-kubectl -n ecommerce rollout status deployment/mongodb --timeout=180s
-kubectl -n ecommerce rollout status deployment/backend --timeout=180s
-kubectl -n ecommerce rollout status deployment/frontend --timeout=180s
+kubectl -n sineth-test-ecommerce rollout status deployment/mongodb --timeout=180s
+kubectl -n sineth-test-ecommerce rollout status deployment/backend --timeout=180s
+kubectl -n sineth-test-ecommerce rollout status deployment/frontend --timeout=180s
 ```
 
 `envsubst` is provided by GNU gettext. On Windows, replace the two image
@@ -52,8 +53,8 @@ placeholders in a temporary copy, or run the commands from Git Bash/WSL.
 ## Verify the application
 
 ```sh
-kubectl -n ecommerce get pods,svc,pvc
-kubectl -n ecommerce logs deployment/backend
+kubectl -n sineth-test-ecommerce get pods,svc,pvc
+kubectl -n sineth-test-ecommerce logs deployment/backend
 curl http://YOUR_NODE_PUBLIC_IP:30080/api/health
 ```
 
