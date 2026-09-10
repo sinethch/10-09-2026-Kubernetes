@@ -109,7 +109,7 @@ metadata:
   name: backend
   namespace: sineth-test-ecommerce
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: backend
@@ -164,7 +164,7 @@ metadata:
   name: frontend
   namespace: sineth-test-ecommerce
 spec:
-  replicas: 1
+  replicas: 2
   selector:
     matchLabels:
       app: frontend
