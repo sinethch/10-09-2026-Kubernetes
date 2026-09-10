@@ -64,7 +64,7 @@ jobs:
       frontend_image: ${{ steps.output-images.outputs.frontend_image }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -116,7 +116,7 @@ jobs:
       url: ${{ vars.APP_URL || (needs.determine-environment.outputs.environment == 'main' && 'https://app.example.com') || (needs.determine-environment.outputs.environment == 'staging' && 'https://staging.example.com') || 'https://qa.example.com' }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check SSH Configuration
         id: check-ssh
