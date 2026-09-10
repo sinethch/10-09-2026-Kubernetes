@@ -48,7 +48,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build Frontend Nginx Container for Scanning
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
@@ -57,7 +57,7 @@ jobs:
           tags: frontend-nginx:scan
 
       - name: Build Backend Container for Scanning
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile

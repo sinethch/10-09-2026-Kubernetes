@@ -82,7 +82,7 @@ jobs:
           echo "repo=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
 
       - name: Build and Push Backend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./backend
           file: ./backend/Dockerfile
@@ -92,7 +92,7 @@ jobs:
             ghcr.io/${{ steps.repo-name.outputs.repo }}/backend:${{ needs.determine-environment.outputs.environment }}-latest
 
       - name: Build and Push Frontend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./frontend
           file: ./frontend/Dockerfile
