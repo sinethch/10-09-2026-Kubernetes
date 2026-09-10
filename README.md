@@ -4,7 +4,7 @@ A production-grade full-stack MERN (MongoDB, Express, React, Node.js) applicatio
 
 ---
 
-## 🚀 DevOps Architecture Overview
+## 🚀 Kubernetes Architecture Overview
 
 ```text
  ┌──────────────────────┐
@@ -12,79 +12,75 @@ A production-grade full-stack MERN (MongoDB, Express, React, Node.js) applicatio
  └──────────┬───────────┘
             │ git push origin main
             ▼
+ ┌──────────────────────┐       ┌──────────────────────────────┐
+ │       GitHub         │       │          Jenkins              │
+ │   Push to main       │──────>│ CI, Trivy, build and push     │
+ └──────────────────────┘       │ images to GitHub Container    │
+                                │ Registry (GHCR)               │
+                                └──────────────┬───────────────┘
+                                               │ kubectl over API
+                                               ▼
  ┌─────────────────────────────────────────────────────────────┐
- │                GitHub Actions CI/CD Pipeline                │
- │  1. CI Checks: Backend syntax & Frontend production build   │
- │  2. Security: Trivy container CVE scan & npm audit          │
- │  3. Build & Publish: Push Nginx & Backend images to GHCR    │
- │  4. Automated SSH Deploy: Connects to Remote Server         │
- └──────────────────────────────┬──────────────────────────────┘
-                                │ Automated SSH Deployment
-                                ▼
- ┌─────────────────────────────────────────────────────────────┐
- │               Remote Server (<SERVER_HOST>)                 │
+ │ Kubernetes namespace: sineth-test-ecommerce                 │
  │                                                             │
- │  Path: <DEPLOY_PATH>                                        │
- │                                                             │
- │  ┌───────────────────────────────────────────────────────┐  │
- │  │        NGINX Production Container (Port Mapping)      │  │
- │  │  - Serves compiled React assets with Gzip & Caching  │  │
- │  │  - SPA client routing (try_files $uri /index.html)   │  │
- │  │  - Reverse proxies /api/ requests to Backend (no CORS)│  │
- │  └──────────────────────────┬────────────────────────────┘  │
- │                             ▼                               │
- │  ┌───────────────────────────────────────────────────────┐  │
- │  │         Express.js Backend Container                  │  │
- │  └──────────────────────────┬────────────────────────────┘  │
- │                             ▼                               │
- │  ┌───────────────────────────────────────────────────────┐  │
- │  │           MongoDB Container (Internal Network)        │  │
- │  └───────────────────────────────────────────────────────┘  │
+ │  ┌─────────────────┐   ┌─────────────────┐   ┌────────────┐ │
+ │  │ Frontend/Nginx  │──>│ Express backend│──>│ MongoDB    │ │
+ │  │ NodePort 30081  │   │ Service :5000  │   │ PVC :27017 │ │
+ │  └─────────────────┘   └─────────────────┘   └────────────┘ │
  └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 🔄 Zero-Touch "Push-to-Deploy" CI/CD
+## 🔄 Jenkins Kubernetes CI/CD
 
-Whenever changes are pushed to `main`, GitHub Actions automatically:
+When changes are pushed to `main`, the `Sineth-Test-K8s` Jenkins pipeline:
 1. Validates tests and builds both frontend and backend.
 2. Builds and publishes Docker images to **GitHub Container Registry (`ghcr.io`)**.
-3. Opens a secure SSH session to the remote server.
-4. Pulls the new images and executes a seamless container restart with zero manual intervention.
+3. Creates or updates the GHCR and MongoDB Kubernetes Secrets.
+4. Applies [`k8s/app.yaml`](k8s/app.yaml) to the remote Kubernetes cluster.
+5. Waits for MongoDB, backend, and frontend rollouts to complete.
 
-### Required GitHub Secrets Configuration
-To enable automated push-to-deploy, configure the following secrets under **Settings > Secrets and variables > Actions** in your GitHub repository:
+### Jenkins Credentials
+Configure these credentials in **Manage Jenkins > Credentials > System > Global credentials**:
 
-| Secret Name | Description | Example / Placeholder |
+| Credential ID | Type | Purpose |
 | :--- | :--- | :--- |
-| `SSH_HOST` | Remote server hostname or IP | `<YOUR_SERVER_HOST>` |
-| `SSH_USER` | Server SSH username | `<DEPLOY_USER>` |
-| `SSH_KEY` | Private SSH key for server access | OpenSSH Private Key (`-----BEGIN OPENSSH PRIVATE KEY-----...`) |
-| `DEPLOY_PATH` | Directory where compose file lives | `<YOUR_DEPLOY_PATH>` |
+| `GITHUB_TOKEN` | Secret text | GHCR `read:packages` and `write:packages` token |
+| `KUBE_TOKEN` | Secret text | Kubernetes service-account bearer token |
+| `KUBE_CA_FILE` | Secret file | Kubernetes CA certificate (`ca.crt`) |
+| `MONGO_URI` | Secret text | `mongodb://mongodb:27017/ecommerce` |
+
+The pipeline uses this non-secret API server setting in [`Jenkinsfile`](Jenkinsfile):
+
+```text
+KUBE_API_SERVER=https://167.172.77.230:6443
+```
+
+The deployment namespace is `sineth-test-ecommerce`. Never commit tokens,
+certificates, passwords, or Kubernetes Secret manifests containing real values.
 
 ---
 
-## ⚙️ Server Configuration (`.env`)
+## ⚙️ Kubernetes Deployment
 
-On the remote server in `<DEPLOY_PATH>`, create the production `.env` file using your desired host and port configurations:
+The Kubernetes resources are defined in [`k8s/app.yaml`](k8s/app.yaml). Jenkins
+substitutes the immutable GHCR image tags before applying it. MongoDB uses the
+`mongodb-data` PersistentVolumeClaim; backend and MongoDB are internal Services;
+the frontend is exposed through NodePort `30081`.
+
+For the complete setup, credentials, firewall, and troubleshooting procedure,
+see [`docs/KUBERNETES_DEPLOYMENT.md`](docs/KUBERNETES_DEPLOYMENT.md).
+
+To verify a successful deployment:
 
 ```bash
-cat << 'EOF' > .env
-NODE_ENV=production
-PORT=5000
-MONGO_URI=mongodb://mongodb:27017/ecommerce
-CLIENT_URL=http://<YOUR_SERVER_HOST>:<FRONTEND_PORT>
-VITE_API_BASE_URL=/api
-FRONTEND_IMAGE=ghcr.io/<OWNER>/<REPO>/frontend:main-latest
-BACKEND_IMAGE=ghcr.io/<OWNER>/<REPO>/backend:main-latest
-FRONTEND_PORT=<FRONTEND_PORT>
-BACKEND_PORT=<BACKEND_PORT>
-EOF
+kubectl -n sineth-test-ecommerce get deployments,pods,services,pvc
+kubectl -n sineth-test-ecommerce rollout status deployment/frontend
 ```
 
-> [!NOTE]
-> The server only requires `docker-compose.deploy.yml` and `.env`. The full repository does not need to be cloned on the server.
+The application is available at `http://167.172.77.230:30081` when the node
+firewall allows TCP port `30081`.
 
 ---
 
@@ -152,8 +148,8 @@ docker compose up -d --build
 
 ## 🔍 Application Health Verification
 
-- **Frontend UI (Nginx)**: `http://<YOUR_SERVER_HOST>:<FRONTEND_PORT>/`
-- **API Health Check**: `http://<YOUR_SERVER_HOST>:<FRONTEND_PORT>/api/health`
+- **Frontend UI (Nginx)**: `http://167.172.77.230:30081/`
+- **API Health Check**: `http://167.172.77.230:30081/api/health`
 
 For additional setup and multi-environment details, see the [CI/CD Guide](docs/CI_CD_GUIDE.md).
 
