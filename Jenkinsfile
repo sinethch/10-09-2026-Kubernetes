@@ -37,6 +37,7 @@ pipeline {
         GITHUB_REPO_NAME  = '10-09-2026-kubernetes'      // Lowercase repo name (GHCR requires lowercase)
         REGISTRY          = 'ghcr.io'                    // GitHub Container Registry
         KUBE_NAMESPACE    = 'sineth-test-ecommerce'
+        KUBE_API_SERVER   = 'https://167.172.77.230:6443'
     }
 
     stages {
