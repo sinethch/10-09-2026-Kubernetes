@@ -1,6 +1,6 @@
 // ============================================================================
 // Jenkinsfile — MERN Stack CI/CD Pipeline
-// Repo: https://github.com/sinethch/06-09-2026-Jenkins
+// Repo: https://github.com/sinethch/10-09-2026-Kubernetes
 // Server: 167.172.77.230
 // ============================================================================
 //
@@ -34,12 +34,9 @@ pipeline {
     // Jenkins also exports these as shell environment variables automatically.
     environment {
         GITHUB_REPO_OWNER = 'sinethch'                   // Your GitHub username
-        GITHUB_REPO_NAME  = '06-09-2026-jenkins'         // Lowercase repo name (GHCR requires lowercase)
+        GITHUB_REPO_NAME  = '10-09-2026-kubernetes'      // Lowercase repo name (GHCR requires lowercase)
         REGISTRY          = 'ghcr.io'                    // GitHub Container Registry
-        DEPLOY_PATH       = '/var/lib/jenkins/deploy/ecommerce' // Writable system-Jenkins deployment workspace
-        CLIENT_URL        = 'http://167.172.77.230:5173' // Your app's public URL
-        BACKEND_PORT      = '5050'                       // Port backend maps to on host
-        FRONTEND_PORT     = '5173'                       // Port frontend maps to on host
+        KUBE_NAMESPACE    = 'ecommerce'
     }
 
     stages {
@@ -282,20 +279,11 @@ pipeline {
         // Equivalent to: cd.yml → job: deploy
         // Only runs on: main, staging, qa
         //
-        // KEY DIFFERENCE from GitHub Actions:
-        //   In GitHub Actions, the deploy step used appleboy/ssh-action to
-        //   SSH INTO the server from a GitHub cloud runner.
-        //
-        //   With Jenkins, we DON'T NEED SSH — because Jenkins IS the server!
-        //   We just run docker compose directly on this machine.
-        //
         // WHAT THIS STAGE DOES:
-        //   1. Recomputes the image tag (same formula as Stage 7)
-        //   2. Copies docker-compose.deploy.yml to /root/ecommerce/
-        //   3. Sets image environment variables
-        //   4. Runs: docker compose pull  → downloads latest images from GHCR
-        //   5. Runs: docker compose up -d → restarts containers with new images
-        //   6. Prunes old unused images to save disk space
+        //   1. Recomputes the immutable image tag used by the build stage
+        //   2. Creates/updates the GHCR pull and application secrets in-cluster
+        //   3. Applies the Kubernetes manifest through the remote API server
+        //   4. Waits for all application deployments to become ready
         // ════════════════════════════════════════════════════════════════════
         stage('CD \u2014 Deploy') {
             when {
@@ -306,10 +294,14 @@ pipeline {
                 }
             }
             steps {
-                withCredentials([string(credentialsId: 'GITHUB_TOKEN', variable: 'GH_TOKEN')]) {
+                withCredentials([
+                    string(credentialsId: 'GITHUB_TOKEN', variable: 'GH_TOKEN'),
+                    string(credentialsId: 'KUBE_TOKEN', variable: 'KUBE_TOKEN'),
+                    file(credentialsId: 'KUBE_CA_FILE', variable: 'KUBE_CA_FILE'),
+                    string(credentialsId: 'MONGO_URI', variable: 'MONGO_URI')
+                ]) {
                     sh '''
                         DEPLOY_BRANCH="${BRANCH_NAME:-${GIT_BRANCH#origin/}}"
-                        # Same tag formula as Stage 7 — must match exactly
                         SHORT_SHA=$(git rev-parse --short HEAD)
                         IMAGE_TAG="${DEPLOY_BRANCH}-${SHORT_SHA}"
                         REPO="${REGISTRY}/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}"
@@ -320,48 +312,31 @@ pipeline {
                         echo "Environment  : ${DEPLOY_BRANCH}"
                         echo "Backend      : ${BACKEND_IMAGE}"
                         echo "Frontend     : ${FRONTEND_IMAGE}"
-                        echo "Deploy path  : ${DEPLOY_PATH}"
 
-                        # Create deploy directory if it doesn't exist
-                        mkdir -p "${DEPLOY_PATH}"
+                        KUBECTL="kubectl --server=${KUBE_API_SERVER} --token=${KUBE_TOKEN} --certificate-authority=${KUBE_CA_FILE}"
 
-                        # Copy docker-compose.deploy.yml from the checked-out
-                        # repo into the deploy directory
-                        cp docker-compose.deploy.yml "${DEPLOY_PATH}/docker-compose.deploy.yml"
+                        # The namespace must exist before namespaced secrets are created.
+                        ${KUBECTL} create namespace "${KUBE_NAMESPACE}" --dry-run=client -o yaml | ${KUBECTL} apply -f -
 
-                        cd "${DEPLOY_PATH}"
+                        ${KUBECTL} -n "${KUBE_NAMESPACE}" create secret docker-registry ghcr-pull-secret \
+                            --docker-server=ghcr.io \
+                            --docker-username="${GITHUB_REPO_OWNER}" \
+                            --docker-password="${GH_TOKEN}" \
+                            --dry-run=client -o yaml | ${KUBECTL} apply -f -
 
-                        # Re-authenticate with GHCR to pull images
-                        echo "${GH_TOKEN}" | docker login ghcr.io \
-                            -u "${GITHUB_REPO_OWNER}" --password-stdin
+                        ${KUBECTL} -n "${KUBE_NAMESPACE}" create secret generic ecommerce-secrets \
+                            --from-literal=MONGO_URI="${MONGO_URI}" \
+                            --dry-run=client -o yaml | ${KUBECTL} apply -f -
 
-                        # Pull the latest images for all services
-                        # The BACKEND_IMAGE / FRONTEND_IMAGE variables are read
-                        # by docker-compose.deploy.yml as ${BACKEND_IMAGE} etc.
                         BACKEND_IMAGE="${BACKEND_IMAGE}" \
                         FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
-                        CLIENT_URL="${CLIENT_URL}" \
-                        BACKEND_PORT="${BACKEND_PORT}" \
-                        FRONTEND_PORT="${FRONTEND_PORT}" \
-                        docker compose -p 04-09-2026-s -f docker-compose.deploy.yml pull
+                        envsubst < k8s/app.yaml | ${KUBECTL} apply -f -
 
-                        # Restart all containers with new images
-                        # '--remove-orphans' cleans up containers from old services
-                        BACKEND_IMAGE="${BACKEND_IMAGE}" \
-                        FRONTEND_IMAGE="${FRONTEND_IMAGE}" \
-                        CLIENT_URL="${CLIENT_URL}" \
-                        BACKEND_PORT="${BACKEND_PORT}" \
-                        FRONTEND_PORT="${FRONTEND_PORT}" \
-                        docker compose -p 04-09-2026-s -f docker-compose.deploy.yml up -d --remove-orphans
+                        ${KUBECTL} -n "${KUBE_NAMESPACE}" rollout status deployment/mongodb --timeout=180s
+                        ${KUBECTL} -n "${KUBE_NAMESPACE}" rollout status deployment/backend --timeout=180s
+                        ${KUBECTL} -n "${KUBE_NAMESPACE}" rollout status deployment/frontend --timeout=180s
 
-                        # Remove Docker images older than 24h to free disk space
-                        docker image prune -af --filter "until=24h" || true
-
-                        echo "=== Deployment Complete! ==="
-                        echo "App is live at: http://167.172.77.230:5173"
-                        echo ""
-                        echo "Running containers:"
-                        docker ps --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+                        echo "=== Kubernetes deployment complete ==="
                     '''
                 }
             }
