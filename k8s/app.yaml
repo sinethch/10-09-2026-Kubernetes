@@ -86,7 +86,7 @@ spec:                                  # PVC configuration
     - ReadWriteOnce                    # Read/write access from one node
   resources:                           # Storage resources requested
     requests:                          # Amount of storage requested
-      storage: 5Gi                     # Request 5 GB of persistent storage
+      storage: 0.5Gi                     # Request 5 GB of persistent storage
 
 
 # ============================================================
