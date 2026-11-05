@@ -1,4 +1,4 @@
-# Production-minded E-Commerce Platform on Kubernetes
+# Kubernetes implementation 
 
 > **A hands-on DevOps project that turns a React + Express application into a repeatable, observable, and containerized Kubernetes deployment.**
 
