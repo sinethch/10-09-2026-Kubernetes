@@ -201,6 +201,4 @@ docs/KUBERNETES_DEPLOYMENT.md
 - Review vulnerability scan results before promoting images.
 - Use a managed MongoDB service or a production-grade database operator for high-availability production workloads; the included single-replica MongoDB deployment is intended for demonstration and learning.
 
-## Connect with me
 
-If you are interested in DevOps, platform engineering, containerization, or Kubernetes, I would be happy to discuss the design decisions and trade-offs behind this project.
