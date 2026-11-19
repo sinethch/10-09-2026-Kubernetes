@@ -110,7 +110,7 @@ Kubernetes manifest receives image references
 Rollout status + health probes confirm readiness
 ```
 
-The Kubernetes manifest uses `${BACKEND_IMAGE}` and `${FRONTEND_IMAGE}` placeholders. This keeps the deployment definition reusable across environments while allowing an automation system or operator to select an immutable image tag for each release.
+The Kubernetes manifest uses `${BACKEND_IMAGE}` and `${FRONTEND_IMAGE}` placeholders. This keeps the deployment definition reusable across environments while allowing an automation system or operator to select an image tag for each release. The checked-in GitHub Actions CD workflow publishes the images to GHCR and, when SSH secrets are configured, deploys the Compose stack to a remote host; it does not apply `k8s/app.yaml` or deploy to a Kubernetes cluster. The Kubernetes steps below are a separate, operator-run deployment path. After applying the manifest, verify the rollout with `kubectl rollout status` as shown below.
 
 ## Kubernetes quick start
 
